@@ -10,6 +10,9 @@ class Candle:
         if self.is_burning:
             self.is_burning = False  # Mark the candle as put out
 
+    def reset(self):
+        self.is_burning = True  # Reset candle to burning state
+
     def draw(self, surface):
         if self.is_burning:
             pygame.draw.rect(surface, (255, 165, 0), self.rect)  # Draw burning candle

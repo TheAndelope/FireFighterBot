@@ -1,45 +1,53 @@
-# main.py
+# maze.py
 import pygame
 import sys
-import numpy as np  # Make sure to import numpy
 from player import Player
 from wall import Wall
 from candle import Candle  # Import the Candle class
 from agent import DQNAgent  # Import the DQNAgent class
 import math
 
-# Initialize Pygame
 pygame.init()
 
 # Screen dimensions
-WIDTH, HEIGHT = 800, 600
+WIDTH, HEIGHT = 729, 729
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
 clock = pygame.time.Clock()
-
+SCALE=3
 # Colors
-WHITE = (255, 255, 255)
+BLACK = (0, 0, 0)
 
 # Initialize the player and walls
-player = Player(WIDTH // 2, HEIGHT // 2)
+player = Player(x=105*SCALE, y=23*SCALE)
 walls = [
-    Wall(200, 150, 100, 20),
-    Wall(400, 300, 20, 100),
-    Wall(600, 150, 150, 20)
+    Wall(0, 0, 729, 10),
+    Wall(0, 0, 10, 729),
+    Wall(0, 719, 729, 10),
+    Wall(719, 0, 10, 729),
+    Wall(72*SCALE, 0, 10, 57*SCALE),
+    Wall(72*SCALE-27*SCALE, 57*SCALE, 27*SCALE+10, 10),
+    Wall(0 ,729-137*SCALE, 74*SCALE, 10),
+    Wall(74*SCALE, 729-137*SCALE, 10, 91*SCALE),
+    Wall(719-120*SCALE, 729-45*SCALE, 10, 45*SCALE),
+    Wall(719-120*SCALE, 729-(45+46)*SCALE, 120*SCALE, 10),
+    Wall(719-121*SCALE, 46*SCALE, 10, 57*SCALE),
+    Wall(729-121*SCALE, 46*SCALE, 73*SCALE, 10),
+    Wall(719-73*SCALE, 103*SCALE, 27*SCALE+10, 10),
+    Wall(719-46*SCALE, 46*SCALE, 10, 57*SCALE)
 ]
 
 # Create candles
 candles = [
-    Candle(250, 160),  # Example candle position
-    Candle(500, 250)   # Another example candle position
+    Candle(729-66*SCALE, 83*SCALE),  # Example candle position
 ]
 
 # Initialize DQN Agent
-agent = DQNAgent(state_size=5, action_size=6)  # 5 state variables, 6 actions
-batch_size = 32
+agent = DQNAgent(state_size=5, action_size=5)  # 5 state variables, 5 actions
+#-agent.load_model(file_path="models/bob.pth")
+batch_size = 8400
 
 # Maximum episode time in seconds
 max_episode_time = 10  # Set the maximum episode time
-episode_start_time = pygame.time.get_ticks()  # Get the current time at the start of the episode
 
 def handle_collisions(player, walls):
     for wall in walls:
@@ -48,63 +56,92 @@ def handle_collisions(player, walls):
             player.rect.y -= player.movement_speed * math.sin(math.radians(player.angle))
             break
 
-# Main loop
-running = True
-while running:
-    elapsed_time = (pygame.time.get_ticks() - episode_start_time) / 1000.0  # Calculate elapsed time in seconds
-    if elapsed_time >= max_episode_time:
-        print("Episode finished due to max time reached.")
-        agent.save_model("models/bill.pth")  # Save the model after finishing an episode
-        break
+# Set the number of episodes
+max_episodes = 1000  # Increase this value as needed
 
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            running = False
+# Main loop for episodes
+for episode in range(max_episodes):
+    # Reset the environment for the new episode
+    player.rect.topleft = (95*SCALE, 23*SCALE)  # Reset player position
+    total_reward = 0  # Initialize total reward for the episode
+    elapsed_time = 0  # Track elapsed time for the episode
 
-    # Cast rays and get distances
-    distances = player.cast_rays(walls, screen)
-    flame_detected = player.flame_sensor.is_candle_in_range(candles[0], player.rect.center)  # Check for flame detection
+    # Reset the flame sensor position if needed
+    player.flame_sensor.angle_offset = 0  # Reset sensor position
 
-    # Create current state representation
-    current_state = [
-        distances[0],  # Front ray distance
-        distances[1],  # Left ray distance
-        distances[2],  # Right ray distance
-        player.flame_sensor.angle_offset,  # Flame sensor angle (use angle_offset for detection)
-        float(flame_detected)  # Flame detected (1.0 if detected, 0.0 otherwise)
-    ]
-
-    # Agent decides action based on current state
-    action = agent.act(current_state)
-    player.act(action)  # Perform action based on agent's decision
-
-    # Handle collisions
-    handle_collisions(player, walls)
-
-    # Check for candle detection
-    player.check_candles(candles)
-
-    # Store transition in memory for the agent
-    next_state = current_state  # The next state is the same for this iteration
-    reward = 1.0 if flame_detected else -1.0  # Define reward based on flame detection
-    agent.remember(current_state, action, reward, next_state, False)  # Store the experience
-
-    # Train the agent if enough experiences are collected
-    if len(agent.memory) > batch_size:
-        agent.replay(batch_size)
-
-    # Clear screen
-    screen.fill(WHITE)
-
-    # Draw player, walls, and candles
-    player.draw(screen)
-    for wall in walls:
-        wall.draw(screen)
+    # Reset all candles to burning state
     for candle in candles:
-        candle.draw(screen)
+        candle.reset()  # Reset each candle to burning
 
-    pygame.display.flip()
-    clock.tick(60)  # Limit to 60 FPS
+    # Store previous state
+    previous_state = None
+
+    while True:  # Loop for each time step in the episode
+        # Handle events and player controls (if applicable)
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+
+        # Cast rays and get distances for the state
+        distances = player.cast_rays(walls, screen)
+        flame_detected = player.flame_sensor.is_candle_in_range(candles[0], player.rect.center, player.angle)
+
+        # Get current state
+        current_state = [
+            distances[0],  # Front ray distance
+            distances[1],  # Left ray distance
+            distances[2],  # Right ray distance
+            player.flame_sensor.angle_offset,  # Sensor angle (use angle_offset)
+            float(flame_detected)  # Flame detected (0 or 1)
+        ]
+
+        # Choose action using the agent
+        action = agent.act(current_state)
+
+        # Perform the action
+        player.act(action)
+
+        # Handle collisions
+        handle_collisions(player, walls)
+
+        # Reward structure
+        reward = 0
+        if player.check_candles(candles):
+            reward += 1000  # Reward for extinguishing a candle
+        elif flame_detected:
+            reward += 5  # Reward for detecting a flame but not extinguishing it
+        else:
+            reward -= 1  # Penalty for not making progress (no flame detected)
+
+        total_reward += reward
+
+        # Store the transition in memory for the agent
+        done = elapsed_time >= max_episode_time  # Check if the episode is done
+        agent.remember(previous_state, action, reward, current_state, done)  # Store experience
+
+        if len(agent.memory) > batch_size:
+            agent.replay(batch_size)
+
+        # Clear the screen and redraw all elements
+        screen.fill(BLACK)
+        player.draw(screen)
+        for wall in walls:
+            wall.draw(screen)
+        for candle in candles:
+            candle.draw(screen)
+
+        pygame.display.flip()
+        clock.tick(30)  # Limit to 60 FPS
+
+        elapsed_time += 1 / 60  # Update elapsed time
+        previous_state = current_state  # Update the previous state
+
+        # Break if the episode is finished
+        if done:
+            print(f"Episode {episode + 1} finished with total reward: {total_reward}")
+            agent.save_model("models/bob.pth")  # Save model after each episode if needed
+            break  # Exit the loop for the current episode
 
 pygame.quit()
 sys.exit()
